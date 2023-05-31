@@ -44,6 +44,7 @@ import           Servant.Foreign
 import           Servant.Foreign.Internal       ( _FunctionName )
 import           Servant.JS.Internal
 import           Servant.Pipes                  ( pipesToSourceIO )
+-- import Servant.Client (HasClient(..), ClientM)
 
 newtype ServerSentEvents
   = ServerSentEvents (StreamGet NoFraming EventStream EventSourceHdr)
@@ -136,3 +137,6 @@ jsForAPI p = gen
     url     = if url' == "'" then "'/'" else url'
     url'    = "'" <> urlArgs
     urlArgs = jsSegments $ req ^.. reqUrl . path . traverse
+
+-- instance HasClient ClientM ServerSentEvents where
+--   type Client ClientM ServerSentEvents = ClientM (StreamGet NoFraming EventStream EventSourceHdr)
