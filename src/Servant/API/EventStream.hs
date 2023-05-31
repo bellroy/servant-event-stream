@@ -8,6 +8,7 @@
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Servant.API.EventStream
   ( ServerSentEvents
@@ -33,17 +34,10 @@ import           Network.HTTP.Media             ( (//)
 import           Network.Wai.EventSource        ( ServerEvent(..) )
 import           Network.Wai.EventSource.EventStream
                                                 ( eventToBuilder )
-import qualified Pipes
-import           Pipes                          ( X
-                                                , (>->)
-                                                , await
-                                                , yield
-                                                )
 import           Servant
 import           Servant.Foreign
 import           Servant.Foreign.Internal       ( _FunctionName )
 import           Servant.JS.Internal
-import           Servant.Pipes                  ( pipesToSourceIO )
 -- import Servant.Client (HasClient(..), ClientM)
 
 newtype ServerSentEvents
@@ -83,21 +77,15 @@ type EventSource = SourceIO ServerEvent
 
 -- | This is mostly to guide reverse-proxies like 
 --   <https://www.nginx.com/resources/wiki/start/topics/examples/x-accel/#x-accel-buffering nginx>
-type EventSourceHdr = Headers '[Header "X-Accel-Buffering" Text] EventSource
+type EventSourceHdr = Headers '[Header "X-Accel-Buffering" Text, Header "Cache-Control" Text] EventSource
 
 -- | See details at
 --   https://hackage.haskell.org/package/wai-extra-3.1.6/docs/Network-Wai-EventSource-EventStream.html#v:eventToBuilder
 instance MimeRender EventStream ServerEvent where
   mimeRender _ = maybe "" toLazyByteString . eventToBuilder
 
-eventSource :: Pipes.Proxy X () () ServerEvent IO () -> EventSourceHdr
-eventSource prod = addHeader "no" $ pipesToSourceIO (prod >-> yieldUntilClose)
- where
-  yieldUntilClose = do
-    e <- await
-    case e of
-      CloseEvent -> return ()
-      _          -> yield e >> yieldUntilClose
+eventSource :: EventSource -> EventSourceHdr
+eventSource = addHeader @"X-Accel-Buffering" "no" . addHeader @"Cache-Control" "no-cache"
 
 jsForAPI
   :: ( HasForeign NoTypes NoContent api
