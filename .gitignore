@@ -4,3 +4,4 @@ dist-newstyle/
 .stack-work/
 # nix results
 result
+cabal.project.local
