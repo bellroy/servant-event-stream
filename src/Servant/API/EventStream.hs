@@ -13,6 +13,7 @@
 
 module Servant.API.EventStream
   ( ServerSentEvents,
+    ServerEvent (..),
     EventStream,
     EventSource,
     EventSourceHdr,
@@ -42,6 +43,7 @@ import Data.Void (Void)
 import Data.Word (Word8)
 import Debug.Trace (traceShowId)
 import GHC.Generics (Generic)
+import GHC.TypeNats (KnownNat, Nat)
 import Hedgehog (Gen)
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
@@ -63,26 +65,26 @@ import qualified Text.Megaparsec as P
 import qualified Text.Megaparsec.Byte as P
 import qualified Text.Megaparsec.Byte.Lexer as P (decimal, signed)
 
-data ServerSentEvents
+data ServerSentEvents method (status :: Nat)
   deriving (Generic)
 
-type ServerSideVerb = StreamGet NoFraming EventStream EventSourceHdr
+type ServerSideImpl method status = Stream method status NoFraming EventStream EventSourceHdr
 
-instance HasServer ServerSentEvents context where
-  type ServerT ServerSentEvents m = ServerT ServerSideVerb m
+instance (ReflectMethod method, KnownNat status) => HasServer (ServerSentEvents method status) context where
+  type ServerT (ServerSentEvents method status) m = ServerT (ServerSideImpl method status) m
   route Proxy =
     route
-      (Proxy :: Proxy ServerSideVerb)
+      (Proxy :: Proxy (ServerSideImpl method status))
   hoistServerWithContext Proxy =
     hoistServerWithContext
-      (Proxy :: Proxy ServerSideVerb)
+      (Proxy :: Proxy (ServerSideImpl method status))
 
 -- | a helper instance for <https://hackage.haskell.org/package/servant-foreign-0.15.3/docs/Servant-Foreign.html servant-foreign>
 instance
   (HasForeignType lang ftype EventSourceHdr) =>
-  HasForeign lang ftype ServerSentEvents
+  HasForeign lang ftype (ServerSentEvents method status)
   where
-  type Foreign ftype ServerSentEvents = Req ftype
+  type Foreign ftype (ServerSentEvents method status) = Req ftype
 
   foreignFor lang Proxy Proxy req =
     req
@@ -158,23 +160,23 @@ jsForAPI p =
         url' = "'" <> urlArgs
         urlArgs = jsSegments $ req ^.. reqUrl . path . traverse
 
-type ClientSideVerb = StreamGet NoFraming EventStream EventSource
+type ClientSideImpl method status = StreamGet NoFraming EventStream EventSource
 
-instance (Client.RunClient m, Client.RunStreamingClient m) => HasClient m ServerSentEvents where
+instance (Client.RunClient m, Client.RunStreamingClient m) => HasClient m (ServerSentEvents method status) where
   -- we don't need to parse the cache control related header on client side
-  type Client m ServerSentEvents = Client m ClientSideVerb
+  type Client m (ServerSentEvents method status) = Client m (ClientSideImpl method status)
   clientWithRoute ::
     Proxy m ->
-    Proxy ServerSentEvents ->
+    Proxy (ServerSentEvents method status) ->
     Client.Request ->
-    Client m ServerSentEvents
-  clientWithRoute p _ = clientWithRoute p (Proxy @ClientSideVerb)
+    Client m (ServerSentEvents method status)
+  clientWithRoute p _ = clientWithRoute p (Proxy @(ClientSideImpl method status))
   hoistClientMonad ::
     Proxy m ->
-    Proxy ServerSentEvents ->
+    Proxy (ServerSentEvents method status) ->
     (forall x. m1 x -> m2 x) ->
-    Client m1 ServerSentEvents ->
-    Client m2 ServerSentEvents
+    Client m1 (ServerSentEvents method status) ->
+    Client m2 (ServerSentEvents method status)
   hoistClientMonad _ _ f = f
 
 instance MimeUnrender EventStream ServerEvent where
