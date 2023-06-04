@@ -33,6 +33,7 @@ import Control.Lens
 import           Data.Semigroup
 #endif
 import Control.Applicative (many)
+import qualified Data.Attoparsec.ByteString as A
 import Data.Bifunctor (first, second)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as LBS
@@ -61,6 +62,7 @@ import qualified Servant.Client.Core as Client
 import Servant.Foreign
 import Servant.Foreign.Internal (_FunctionName)
 import Servant.JS.Internal
+import Servant.Types.SourceT (transformWithAtto)
 import qualified Text.Megaparsec as P
 import qualified Text.Megaparsec.Byte as P
 
@@ -104,7 +106,7 @@ encodeServerEvent ServerEvent {..} = idBs <> nameBs <> mconcat dataBs <> "\n"
     dataBs = fmap (\line -> "data:" <> line <> "\n") . Char8.lines $ toRawEventData eventData
     nameBs = encodeNoneDataField "event" eventName
     idBs = encodeNoneDataField "id" eventId
-    encodeNoneDataField fieldName = maybe "" (\field -> fieldName <> ":" <> LBS.filter (/= charToWord8 '\n') field <> "\n")
+    encodeNoneDataField fieldName = maybe "" (\field -> fieldName <> ":" <> LBS.filter (/= newlineW8) field <> "\n")
 
 serverEventParser :: FromServerEventData a => P.Parsec Void LBS.ByteString (ServerEvent a)
 serverEventParser = do
@@ -121,7 +123,7 @@ fieldParser :: P.Parsec Void LBS.ByteString (LBS.ByteString, LBS.ByteString)
 fieldParser = do
   label <- P.takeWhile1P Nothing (/= charToWord8 ':')
   void $ P.char (charToWord8 ':')
-  value <- P.takeWhileP Nothing (/= charToWord8 '\n')
+  value <- P.takeWhileP Nothing (/= newlineW8)
   void P.newline
   void $ many (P.try commentParser) -- skip trailing comments
   pure (label, value)
@@ -129,7 +131,10 @@ fieldParser = do
 commentParser :: P.Parsec Void LBS.ByteString ()
 commentParser =
   void $
-    P.char (charToWord8 ':') *> P.takeWhileP Nothing (/= charToWord8 '\n')
+    P.char (charToWord8 ':') *> P.takeWhileP Nothing (/= newlineW8)
+
+newlineW8 :: Word8
+newlineW8 = charToWord8 '\n'
 
 charToWord8 :: Char -> Word8
 charToWord8 = fromIntegral . ord
@@ -141,7 +146,17 @@ safeHead (x : _) = Just x
 data ServerSentEvents method (status :: Nat) (a :: Type)
   deriving (Generic)
 
-type ServerSideImpl method status a = Stream method status NoFraming EventStream (EventSourceHdr a)
+data ServerEventFraming
+
+instance FramingRender ServerEventFraming where
+  framingRender _ = fmap
+
+instance FramingUnrender ServerEventFraming where
+  framingUnrender _ f = transformWithAtto $ do
+    bytes <- A.manyTill A.anyWord8 (A.string "\n\n")
+    either fail pure . f $ LBS.pack bytes <> Char8.pack ("\n\n" :: String)
+
+type ServerSideImpl method status a = Stream method status ServerEventFraming EventStream (EventSourceHdr a)
 
 instance (ReflectMethod method, KnownNat status, ToServerEventData a) => HasServer (ServerSentEvents method status a) context where
   type ServerT (ServerSentEvents method status a) m = ServerT (ServerSideImpl method status a) m
@@ -233,7 +248,7 @@ jsForAPI p =
         url' = "'" <> urlArgs
         urlArgs = jsSegments $ req ^.. reqUrl . path . traverse
 
-type ClientSideImpl method status a = StreamGet NoFraming EventStream (EventSource a)
+type ClientSideImpl method status a = StreamGet ServerEventFraming EventStream (EventSource a)
 
 instance
   (Client.RunClient m, Client.RunStreamingClient m, FromServerEventData a) =>
