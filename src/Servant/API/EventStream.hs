@@ -169,7 +169,7 @@ instance (ReflectMethod method, KnownNat status, ToServerEventData a) => HasServ
 
 -- | a helper instance for <https://hackage.haskell.org/package/servant-foreign-0.15.3/docs/Servant-Foreign.html servant-foreign>
 instance
-  (HasForeignType lang ftype (EventSourceHdr a)) =>
+  (HasForeignType lang ftype (EventSourceHdr a), ReflectMethod method) =>
   HasForeign lang ftype (ServerSentEvents method status a)
   where
   type Foreign ftype (ServerSentEvents method status a) = Req ftype
@@ -181,7 +181,7 @@ instance
       & reqReturnType ?~ retType
     where
       retType = typeFor lang (Proxy :: Proxy ftype) (Proxy :: Proxy (EventSourceHdr a))
-      method = reflectMethod (Proxy :: Proxy 'GET)
+      method = reflectMethod (Proxy :: Proxy method)
 
 -- | A type representation of an event stream. It's responsible for setting proper content-type
 --   and buffering headers, as well as for providing parser implementations for the streams.
@@ -248,10 +248,14 @@ jsForAPI p =
         url' = "'" <> urlArgs
         urlArgs = jsSegments $ req ^.. reqUrl . path . traverse
 
-type ClientSideImpl method status a = StreamGet ServerEventFraming EventStream (EventSource a)
+type ClientSideImpl method status a = Stream method status ServerEventFraming EventStream (EventSource a)
 
 instance
-  (Client.RunClient m, Client.RunStreamingClient m, FromServerEventData a) =>
+  ( Client.RunClient m,
+    Client.RunStreamingClient m,
+    FromServerEventData a,
+    ReflectMethod method
+  ) =>
   HasClient m (ServerSentEvents method status a)
   where
   -- we don't need to parse the cache control related header on client side
