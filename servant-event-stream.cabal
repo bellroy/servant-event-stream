@@ -41,6 +41,7 @@ library
     , lens                 >=4.17    && <6
     , megaparsec
     , servant
+    , servant-auth-server
     , servant-client       ^>=0.19
     , servant-client-core  ^>=0.19
     , servant-foreign      >=0.15    && <0.16

@@ -57,6 +57,7 @@ import Network.HTTP.Media
     (/:),
   )
 import Servant
+import Servant.Auth.Server.Internal.AddSetCookie (AddSetCookieApi, AddSetCookieApiVerb)
 import Servant.Client (HasClient (..))
 import qualified Servant.Client.Core as Client
 import Servant.Foreign
@@ -291,3 +292,5 @@ genFieldValue =
     <$> Gen.utf8
       (Range.linear 0 100)
       (Gen.filter (/= '\n') Gen.unicode)
+
+type instance AddSetCookieApi (ServerSentEvents method status a) = ServerSentEvents method status (AddSetCookieApiVerb a)
