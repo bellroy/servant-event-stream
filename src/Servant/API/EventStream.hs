@@ -57,7 +57,8 @@ import Network.HTTP.Media
     (/:),
   )
 import Servant
-import Servant.Auth.Server.Internal.AddSetCookie (AddSetCookieApi, AddSetCookieApiVerb)
+import Servant.Auth.Server (SetCookie)
+import Servant.Auth.Server.Internal.AddSetCookie (AddSetCookieApi)
 import Servant.Client (HasClient (..))
 import qualified Servant.Client.Core as Client
 import Servant.Foreign
@@ -196,7 +197,7 @@ type EventSource a = SourceIO (ServerEvent a)
 
 -- | This is mostly to guide reverse-proxies like
 --   <https://www.nginx.com/resources/wiki/start/topics/examples/x-accel/#x-accel-buffering nginx>
-type EventSourceHdr a = Headers '[Header "X-Accel-Buffering" Text, Header "Cache-Control" Text] (EventSource a)
+type EventSourceHdr a = Headers '[Header "Set-Cookie" SetCookie, Header "X-Accel-Buffering" Text, Header "Cache-Control" Text] (EventSource a)
 
 -- | See details at
 --   https://hackage.haskell.org/package/wai-extra-3.1.6/docs/Network-Wai-EventSource-EventStream.html#v:eventToBuilder
@@ -204,7 +205,7 @@ instance ToServerEventData a => MimeRender EventStream (ServerEvent a) where
   mimeRender _ = encodeServerEvent
 
 eventSource :: EventSource a -> EventSourceHdr a
-eventSource = addHeader @"X-Accel-Buffering" "no" . addHeader @"Cache-Control" "no-cache"
+eventSource = noHeader . addHeader @"X-Accel-Buffering" "no" . addHeader @"Cache-Control" "no-cache"
 
 jsForAPI ::
   ( HasForeign NoTypes NoContent api,
@@ -293,4 +294,4 @@ genFieldValue =
       (Range.linear 0 100)
       (Gen.filter (/= '\n') Gen.unicode)
 
-type instance AddSetCookieApi (ServerSentEvents method status a) = ServerSentEvents method status (AddSetCookieApiVerb a)
+type instance AddSetCookieApi (ServerSentEvents method status a) = ServerSentEvents method status a
