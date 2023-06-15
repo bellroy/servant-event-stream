@@ -22,6 +22,7 @@ module Servant.API.EventStream
     EventStream,
     EventSource,
     EventSourceHdr,
+    ServerEventFraming,
     eventSource,
     jsForAPI,
     genServerEvent,
